@@ -398,13 +398,14 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
     # natural frequencies
     nat_freqs = mapdl.post_processing.frequency_values
 
-    # initialise matrices
-    mode_shapes_x = np.zeros((10,len(nodal_x_coord)))
-    mode_shapes_y = np.zeros((10,len(nodal_x_coord)))
-    mode_shapes_z = np.zeros((10,len(nodal_x_coord)))
+    # initialise mode shape matrices
+    num_modes = len(nat_freqs)
+    mode_shapes_x = np.zeros((num_modes,len(nodal_x_coord)))
+    mode_shapes_y = np.zeros((num_modes,len(nodal_x_coord)))
+    mode_shapes_z = np.zeros((num_modes,len(nodal_x_coord)))
 
     # get nodal displacements
-    for k in range(10):
+    for k in range(num_modes):
         mapdl.set(sbstep=k+1) # for each solution substep
         for i in range(len(nodal_x_coord)):
             mode_shapes_x[k,i] = q.ux(q.node(nodal_x_coord[i], 0, 0))
@@ -525,23 +526,23 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 
 ### -------- Use cases -----------
 
-# # non-linear sprung
-nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_foundation(
-                steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_damping=0.02, # material parameters
-                   mon_len = 90, mon_base_r2 = 5, mon_base_r1 = 4, mon_top_r2 = 5, # monopile parameters
-                   mon_top_r1 = 4, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes = 2, 
-                   tower_len = 135, tower_top_r2 = 3, tower_top_r1 = 2, # tower parameters
-                   tower_base_r2 = 5, tower_base_r1 = 4, tower_n_nodes = 10,
-                   nac_mass = 789.168e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
-                   water_switch=1,
-                   fixtures_switch=1,
-                   soil_model_switch = 2,
-                   soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
-                   soil_k = 10000000, soil_eta = 0.01,
-                   s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
-                   spring_len = 10, submerged_len = 20,
-                   scour_n_nodes = 0 # scour parameters
-                   )
+# # # non-linear sprung
+# nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_foundation(
+#                 steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_damping=0.02, # material parameters
+#                    mon_len = 90, mon_base_r2 = 5, mon_base_r1 = 4, mon_top_r2 = 5, # monopile parameters
+#                    mon_top_r1 = 4, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes = 2, 
+#                    tower_len = 135, tower_top_r2 = 3, tower_top_r1 = 2, # tower parameters
+#                    tower_base_r2 = 5, tower_base_r1 = 4, tower_n_nodes = 10,
+#                    nac_mass = 789.168e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
+#                    water_switch=1,
+#                    fixtures_switch=1,
+#                    soil_model_switch = 2,
+#                    soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+#                    soil_k = 10000000, soil_eta = 0.01,
+#                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
+#                    spring_len = 10, submerged_len = 20,
+#                    scour_n_nodes = 0 # scour parameters
+#                    )
 
 
 # 15 MW NREL Ref turbine - soil stiffness to be matched - based on dense sand or gravel soils (35 - 200MPa for shear mod)
@@ -556,16 +557,34 @@ nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_
 #                    spring_len = 10, submerged_len = 30,
 #                    scour_n_nodes=0)
 
-# # 5 MW NREL ref turbine
+# 5 MW NREL ref turbine - no monopile (includes 30% increase in wall thickness)
+nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
+                   mon_len = 0.001, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
+                   mon_top_r1 = 2.973, mon_embedded_n_nodes=1, mon_submerged_n_nodes=1, mon_air_n_nodes=1,
+                   tower_len = 87.6, tower_top_r2 = 1.935, tower_top_r1 = 1.9103, # tower parameters
+                   tower_base_r2 = 3, tower_base_r1 = 2.9649, tower_n_nodes = 10,
+                   nac_mass = 350e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
+                   water_switch=0,
+                   fixtures_switch=1,
+                   soil_model_switch = 0,
+                   soil_embedded_depth = 0.0001,
+                   spring_len = 10, submerged_len = 0.0001,
+                   scour_n_nodes = 0 # scour parameters
+                   )
+
+# 5 MW NREL ref turbine - with monopile
 # nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
-#                    mon_len = 75, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
-#                    mon_top_r1 = 2.973, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes=2,
+#                    mon_len = 0.001, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
+#                    mon_top_r1 = 2.973, mon_embedded_n_nodes=1, mon_submerged_n_nodes=1, mon_air_n_nodes=1,
 #                    tower_len = 90, tower_top_r2 = 1.935, tower_top_r1 = 1.916, # tower parameters
 #                    tower_base_r2 = 3, tower_base_r1 = 2.973, tower_n_nodes = 10,
 #                    nac_mass = 350e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
-#                    soil_embedded_depth = 45, soil_model_switch = 1,
+#                    water_switch=1,
+#                    fixtures_switch=1,
+#                    soil_model_switch = 0,
+#                    soil_embedded_depth = 0.0001,
 #                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
-#                    spring_len = 10, submerged_len = 20,
+#                    spring_len = 10, submerged_len = 0.0001,
 #                    scour_n_nodes = 0 # scour parameters
 #                    )
 
