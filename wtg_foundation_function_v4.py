@@ -13,16 +13,19 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
                    nac_mass = 820e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
                    water_switch=1, # water modelling switch
                    fixtures_switch=1, # adds density to the tower section to acocunt for fixtures/fittings
-                   soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+                   embedded_len = 45, 
                    soil_model_switch = 0, soil_k = 10000000, soil_eta = 0.01,
                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
-                   soil_kpy=34e+3, soil_C1=3, soil_C2=3.5, soil_C3=2.7, soil_gamma = 17, soil_A=0.9, # p-y API sand
-                   spring_len = 10, submerged_len = 20, water_depth = 25, tower_start = 25,
-                   scour_n_nodes = 0 # scour parameters
+                   # soil_kpy=34e+3, soil_C1=3, soil_C2=3.5, soil_C3=2.7, soil_gamma = 17, soil_A=0.9, # p-y API sand
+                   # soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+                   spring_len = 10, tower_start = 25,
+                   scour_n_nodes = 0, # scour parameters
+                   wind_load=2e+6,
+                   wave_load=0
                    ):
     
-    submerged_len = mon_len - tower_start - soil_embedded_depth
-    if submerged_len + soil_embedded_depth > mon_len:
+    submerged_len = mon_len - tower_start - embedded_len
+    if submerged_len + embedded_len > mon_len:
         raise Exception("monopile cannot be shorter than submerged length + embedded length")
 
     mon_n_nodes = mon_embedded_n_nodes + mon_submerged_n_nodes + mon_air_n_nodes # useful quantity
@@ -64,7 +67,7 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 
     ## create keypoints for geometry  
 
-    keypoints = [0, soil_embedded_depth, soil_embedded_depth + submerged_len, mon_len, 
+    keypoints = [0, embedded_len, embedded_len + submerged_len, mon_len, 
                  mon_len + tower_len, mon_len + tower_len + nac_height]
 
     kp_num = 1
@@ -173,10 +176,10 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 
     # # Springs
     n_springs = mon_embedded_n_nodes + 1 # get appropriate num nodes below soil depth
-    spring_gap = soil_embedded_depth/mon_embedded_n_nodes # gap between springs (i.e. gap between nodes)
+    spring_gap = embedded_len/mon_embedded_n_nodes # gap between springs (i.e. gap between nodes)
     spring_depths = []
     for i in range(n_springs):
-        spring_depths.append(soil_embedded_depth - i*spring_gap) # deepest to shallowest
+        spring_depths.append(0 + i*spring_gap) # shallowest to deepest
 
     ### ---------- Soil Modelling -------------
     ## Set up constants
@@ -188,34 +191,56 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
         mapdl.type(2) # Change to COMBIN14
         mapdl.r(1, soil_k, soil_eta)
     # non-linear springs
-    elif soil_model_switch == 2: # Matlock soft clay - note this is the static model (not cyclic loading)
+    elif soil_model_switch == 2: # Matlock soft clay
         mapdl.type(3) # change to COMBIN39
-        y = np.linspace(0,1,6) # displacements
-        D = mon_base_r2 * 2
+        y = np.linspace(0,0.5,30) # displacements 
+        D = mon_base_r2 * 2 # monopile diameter 
         y_50 = 2.5 * eps_50 * D # normalising parameter
         z = np.array(spring_depths)
-        z = np.reshape(z, (len(z), 1)) # n_springs x 1
+        z = np.reshape(z, (len(z), 1)) # depths below mudline (at spring depths) n_springs x 1
+        Zr = (6 * s_u * D) / ((gamma * D) + (J * s_u)) # transition depth
+        
+        # ultimate lateral soil resistance per unit length, for each depth
         Pu1 = (3 + (gamma * z / s_u) + (J * z / D)) * s_u * D # lateral bearing capacity factor (n_springs x 1)
         Pu2 = 9 * s_u * D
         Pu1[Pu1>Pu2] = Pu2
-        p_ult = Pu1 # ultimate lateral soil resistance (n_springs x 1) for each depth
+        p_ult = Pu1 
         
-        p = np.zeros((len(y), len(p_ult)))
-        for i in range(len(y)): # loop through displacements
-            for j in range(len(p_ult)): # loop through p_ult for each spring at displacement i
-                if y[i]/y_50 > 8: 
-                    p[i,j] = p_ult[j] # rows displacements, columns lateral soil resistance/m for each depth
-                else:
-                    p[i,j] = 0.5 * p_ult[j] * ((y[i] / y_50) ** (1/3)) # lateral soil resistance (force/unit length) (displacements x n_springs)
+        # soil resistance at rest
+        p_rest = np.zeros(len(spring_depths)).reshape(-1,1)
+        p_rest[z >= Zr] = 0.72 * p_ult[z >= Zr]
+        p_rest[z < Zr] = 0.72 * p_ult[z < Zr] * (z[z < Zr] / Zr)
+
+        #p = np.zeros((len(y), len(p_ult)))
+        p = np.zeros((len(spring_depths), len(y)))
+        for i in range(len(y)): # loop through displacements, y
+            if y[i] <= (3 * y_50):
+                p[:,i] = np.squeeze(0.5 * p_ult * ((y[i] / y_50) ** (1/3)))
+            elif y[i] > (3 * y_50) and y[i] < (15 * y_50):
+                p[:,i] = np.squeeze(p_rest + (((15 * y_50) - y[i]) / ((12 * y_50) * 0.72 * p_ult - p_rest)))
+            else: # y[i] >= 15 * y_50
+                p[:,i] = np.squeeze(p_rest)
+
+        # Spring force/deflection curves
+        for i in range(n_springs):
+            plt.plot(y, p[i,:], label='depth' + str(i))
+        plt.xlabel('Deflection (m)')
+        plt.ylabel('Force (N), per unit length')
+        plt.legend()
+        plt.show()
 
         # now need to multiply p vector by length of element we want the spring to apply to since it is force/unit length
         # i.e. each p x gap between springs with half gap at base and surface of monopile
-        p[:,1:-1] *= spring_gap # intermediate springs
-        p[:,-1] *= spring_gap/2 # monopile surface spring
-        p[:,0] *= spring_gap/2 # monopile base spring
-        
+        p[1:-1,:] *= spring_gap # intermediate springs
+        p[0,:] *= spring_gap/2 # monopile surface spring (underestimate) #TODO could be improved
+        p[-1,:] *= spring_gap/2 # monopile base spring (overestimate) #TODO could be improved
+
+        # # Spring force/deflection curves
         # for i in range(n_springs):
-        #     plt.plot(y, p[:,i])
+        #     plt.plot(y, p[i,:], label='depth' + str(i))
+        # plt.xlabel('Deflection (m)')
+        # plt.ylabel('Force (N)')
+        # plt.legend()
         # plt.show()
 
         # set up non-linear curve constants
@@ -224,9 +249,9 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
             args.append(i+1)
             for j in range(len(y)):
                 args.append(y[j])
-                args.append(p[j,i])
-            #mapdl.r(i+1, y[0], p[0,i], y[1], p[1,i], y[2], p[2,i], y[3], p[3,i], y[4], p[4,i])
-            #print(args)
+                args.append(p[i,j])
+#            mapdl.r(i+1, y[0], p[0,i], y[1], p[1,i], y[2], p[2,i], y[3], p[3,i], y[4], p[4,i])
+            print(args)
 
             if len(args) <= 7:
                 mapdl.r(*args)
@@ -240,69 +265,6 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
             if len(args) > 0:
                 mapdl.rmore(*args)
                 args = []
-    # # p-y API sand model
-    # elif soil_model_switch == 3:
-    #     mapdl.type(3)
-    #     y = np.linspace(0,0.1,11) # lateral displacements
-    #     D = mon_base_r2 * 2
-    #     z = np.array(spring_depths)
-    #     if scour_n_nodes > 0:
-    #         scour_depth = scour_n_nodes * spring_gap # note number of nodes for monopile are important here to determine correct depth
-    #         z -= scour_depth # update effective spring depths to account for scour
-    #         z[z < 0] = 0
-    #     #z = np.reshape(z, (len(z), 1)) # n_springs x 1
-    #     Pus = ((soil_C1 * z) + (soil_C2 * D)) * soil_gamma * z # ultimate resistance at shallow depth
-    #     Pud = soil_C3 * D * soil_gamma * z # ultimate resistance at the deep depth
-    #     Pu = np.minimum(Pus, Pud)
-
-    #     p = np.zeros((len(y), len(z)))
-    #     for i in range(len(y)): # loop through displacements
-    #         for j in range(len(z)): # loop through depth for each spring at displacement i
-    #             if Pu[j] == 0:
-    #                 p[i,j] = 0 # avoid divide by zero error (zero lateral resistance at surface for sand)
-    #             else:   
-    #                 p[i,j] = soil_A * Pu[j] * np.tanh(y[i] * soil_kpy * z[j] / (soil_A * Pu[j])) # lateral soil resistance (force/unit length) (displacements x n_springs)
-
-    #     # now need to multiply p vector by length of element we want the spring to apply to since it is force/unit length
-    #     # i.e. each p x gap between springs with half gap at base and surface of monopile
-    #     p[:,1:-1] *= spring_gap # intermediate springs
-    #     p[:,-1] *= spring_gap/2 # monopile surface spring (technically not stiff enough)
-    #     p[:,0] *= spring_gap/2 # monopile base spring (technically too stiff)
-        
-    #     # # Plot spring curves
-    #     # for i in range(n_springs):
-    #     #     plt.plot(y, p[:,i])
-    #     # plt.show()
-
-    #     # set up non-linear curve constants
-    #     for i in range(n_springs):
-    #         args = []
-    #         args.append(i+1)
-    #         for j in range(len(y)):
-    #             args.append(y[j])
-    #             args.append(p[j,i])
-    #         #mapdl.r(i+1, y[0], p[0,i], y[1], p[1,i], y[2], p[2,i], y[3], p[3,i], y[4], p[4,i])
-    #         if len(args) <= 7:
-    #             mapdl.r(*args)
-    #             args = []
-    #         else:
-    #             mapdl.r(*args[0:7])
-    #             args = args[7:]
-    #         while len(args) >= 6:
-    #             mapdl.rmore(*args[0:6])
-    #             args = args[6:]
-    #         if len(args) > 0:
-    #             mapdl.rmore(*args)
-    #             args = []
-    #     # Rigid foundation flexible soil method - Not yet implemented - model used for 15MW NREL turbine        
-    # elif soil_model_switch == 4:
-    #     lat_mod = 1 + (0.55 * (2 - soil_poisson) * soil_embedded_depth / mon_base_r2)# lateral soil stiffness modifier
-    #     soil_k_lat = 32*(1-soil_poisson)*soil_shear_mod*mon_base_r2*lat_mod/(7-(8*soil_poisson))# lateral soil stiffness
-    #     vert_mod = 1 + (0.6 * (1 - soil_poisson) * soil_embedded_depth / mon_base_r2)
-    #     soil_k_vert = 4*soil_shear_mod*mon_base_r2*vert_mod/(1-soil_poisson)
-    #     rock_mod = 1 + (1.2 * (1 - soil_poisson) * soil_embedded_depth / mon_base_r2) + (0.2 * (2 - soil_poisson) * ((soil_embedded_depth / mon_base_r2)**3))
-    #     soil_k_rock = 8*soil_shear_mod*(mon_base_r2 ** 3)*rock_mod/(3*(1-soil_poisson))
-    #     soil_k_tors = 16*soil_shear_mod*(mon_base_r2 ** 3)/3    
 
     ## Create springs if needed
     # set up query
@@ -319,9 +281,9 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
             else:
                 raise Exception("soil model not supported")
             # create node
-            mapdl.n("", i*spring_gap, spring_len, 0)
+            mapdl.n("", embedded_len - i*spring_gap, spring_len, 0)
             # create spring
-            mapdl.e(q.node(i*spring_gap, 0, 0), q.node(i*spring_gap, spring_len, 0))
+            mapdl.e(q.node(embedded_len - i*spring_gap, 0, 0), q.node(embedded_len - i*spring_gap, spring_len, 0))
 
         # z-direction
         for i in range(n_springs):
@@ -333,14 +295,14 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
             else:
                 raise Exception("soil model not supported")
             # create node
-            mapdl.n("", i*spring_gap, 0, spring_len)
+            mapdl.n("", embedded_len - i*spring_gap, 0, spring_len)
             # create spring
-            mapdl.e(q.node(i*spring_gap, 0, 0), q.node(i*spring_gap, 0, spring_len))
+            mapdl.e(q.node(embedded_len - i*spring_gap, 0, 0), q.node(embedded_len - i*spring_gap, 0, spring_len))
 
         # x-direction
         # vertical stiffness
         # create node
-        mapdl.r(7, soil_k, soil_eta) # assumed linear spring for base
+        mapdl.r(7, soil_k*100000, soil_eta) # assumed linear spring for base
         mapdl.real(n_springs + 1) # change to correct constant set
         mapdl.type(2) # Change to COMBIN14
         #mapdl.dk(1,"UX",0)
@@ -350,17 +312,11 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 
         # Add node constrains to free end of springs
         #mapdl.d(q.node(0, spring_len, 0),"ALL",0,"",q.node(spring_depths[0], 0, spring_len))
-        mapdl.d(q.node(0, spring_len, 0),"ALL",0,"",q.node(-spring_len, 0, 0)) # first spring to last spring
+        mapdl.d(q.node(embedded_len, spring_len, 0),"ALL",0,"",q.node(-spring_len, 0, 0)) # first spring to last spring
 
     ## Apply force for wind loading
-    mapdl.fk(6,"FY",-100)
+    mapdl.fk(6,"FY",wind_load)
 
-    # # plotting
-    # mapdl.eshape(1)
-    # mapdl.eplot(show_edges=True, smooth_shading=True,
-    #             show_node_numbering=True, plot_bc=True)
-    # mapdl.nplot(nnum=True)
-    # mapdl.finish()
 
     ### Analysis ###
 
@@ -369,9 +325,9 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
     node_count = mon_embedded_n_nodes + mon_submerged_n_nodes + mon_air_n_nodes + tower_n_nodes + nac_n_nodes 
 
     # get lengths of segments of monopile/tower/nacelle
-    mon_embedded_node_len = soil_embedded_depth / mon_embedded_n_nodes
+    mon_embedded_node_len = embedded_len / mon_embedded_n_nodes
     mon_submerged_node_len = submerged_len / mon_submerged_n_nodes
-    mon_air_node_len = (mon_len - soil_embedded_depth - submerged_len) / mon_air_n_nodes
+    mon_air_node_len = (mon_len - embedded_len - submerged_len) / mon_air_n_nodes
     tower_node_len = tower_len / tower_n_nodes
     nac_node_len = nac_height / nac_n_nodes
 
@@ -415,9 +371,9 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
             mode_shapes_z[k,i] = q.uz(q.node(nodal_x_coord[i], 0, 0))
     
     ## Harmonic Analysis
-    freq_start = 0
-    freq_end = 0.5
-    freq_incs = 500 # set the number of increments between start and end
+    freq_start = 0.05
+    freq_end = 0.2
+    freq_incs = 1000 # set the number of increments between start and end
 
     mapdl.run("/SOLU")
     mapdl.antype(3)  # HARMONIC ANALYSIS
@@ -463,10 +419,13 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
     amp = np.sqrt(np.square(real) + np.square(imag))
 
     print("analysis complete")
-    print("soil_k")
-    print(soil_k)
-    print("soil_embedded_depth")
-    print(soil_embedded_depth)
+    print("natural frequencies")
+    print(nat_freqs)
+    plt.rcParams.update({'font.size': 15})
+    plt.rc('legend',fontsize=10)
+    plt.yscale('log')
+    plt.plot(freqs,amp)
+    plt.show()
     mapdl.exit()
     
     return nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs
@@ -484,7 +443,7 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=0,
 #                    fixtures_switch=0,
 #                    soil_model_switch = 0,
-#                    soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+#                    embedded_len = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
 #                    soil_k = 10000000, soil_eta = 0.01,
 #                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
 #                    spring_len = 10, tower_start=25,
@@ -502,30 +461,30 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=0,
 #                    fixtures_switch=0,
 #                    soil_model_switch = 1,
-#                    soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+#                    embedded_len = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
 #                    soil_k = 10000000, soil_eta = 0.01,
 #                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
 #                    spring_len = 10, tower_start=25,
 #                    scour_n_nodes = 0 # scour parameters
 #                    )
 
-# non-linear sprung
-# nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs = wtg_foundation(
-#                 steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_damping=0.02, # material parameters
-#                    mon_len = 90, mon_base_r2 = 5, mon_base_r1 = 4, mon_top_r2 = 5, # monopile parameters
-#                    mon_top_r1 = 4, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes = 2, 
-#                    tower_len = 135, tower_top_r2 = 3, tower_top_r1 = 2, # tower parameters
-#                    tower_base_r2 = 5, tower_base_r1 = 4, tower_n_nodes = 10,
-#                    nac_mass = 789.168e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
-#                    water_switch=0,
-#                    fixtures_switch=0,
-#                    soil_model_switch = 2,
-#                    soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
-#                    soil_k = 10000000, soil_eta = 0.01,
-#                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
-#                    spring_len = 10, tower_start=25,
-#                    scour_n_nodes = 0 # scour parameters
-#                    )
+# non-linear sprung, no water and fixtures modelled
+nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs = wtg_foundation(
+                steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_damping=0.02, # material parameters
+                   mon_len = 90, mon_base_r2 = 5, mon_base_r1 = 4, mon_top_r2 = 5, # monopile parameters
+                   mon_top_r1 = 4, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes = 2, 
+                   tower_len = 135, tower_top_r2 = 3, tower_top_r1 = 2, # tower parameters
+                   tower_base_r2 = 5, tower_base_r1 = 4, tower_n_nodes = 10,
+                   nac_mass = 789.168e+3, nac_height = 2, nac_n_nodes = 1, # nacelle parameters
+                   water_switch=0,
+                   fixtures_switch=0,
+                   soil_model_switch = 2,
+                   embedded_len = 45, # soil parameters
+                   soil_k = 10000000, soil_eta = 0.01,
+                   s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
+                   spring_len = 10, tower_start=25,
+                   scour_n_nodes = 0 # scour parameters
+                   )
 
 
 ### -------- Use cases -----------
@@ -541,7 +500,7 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=1,
 #                    fixtures_switch=1,
 #                    soil_model_switch = 2,
-#                    soil_embedded_depth = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
+#                    embedded_len = 45, soil_poisson = 0.4, soil_shear_mod = 50e+6, # soil parameters
 #                    soil_k = 10000000, soil_eta = 0.01,
 #                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
 #                    spring_len = 10, tower_start=25,
@@ -559,13 +518,13 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=0,
 #                    fixtures_switch=1,
 #                    soil_model_switch = 0,
-#                    soil_embedded_depth = 0.0001,
+#                    embedded_len = 0.0001,
 #                    spring_len = 10, tower_start=0.0001,
 #                    scour_n_nodes = 0 # scour parameters
 #                    )
 
 # 5 MW NREL ref turbine - with monopile (Zuo et al. 2018)
-# nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, dy = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
+# nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
 #                    mon_len = 75, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
 #                    mon_top_r1 = 2.973, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes=2,
 #                    tower_len = 90, tower_top_r2 = 1.935, tower_top_r1 = 1.916, # tower parameters
@@ -574,9 +533,11 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=1,
 #                    fixtures_switch=1,
 #                    soil_model_switch = 2,
-#                    soil_embedded_depth = 45,
-#                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock
-#                    spring_len = 10, tower_start=25,
+#                    embedded_len = 45,
+#                    tower_start = 10,
+#                    s_u=50e+3, eps_50=0.008, gamma=8e+3, J=0.5, # p-y soft clay Matlock 
+#                    # Zuo settings s_u = 25, 50, 100 : eps_50 = 0.02, 0.008. 0.006  
+#                    spring_len = 10, 
 #                    scour_n_nodes = 0 # scour parameters
 #                    )
 
@@ -590,7 +551,7 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=1,
 #                    fixtures_switch=1,
 #                    soil_model_switch = 1, soil_k = 30000000, soil_eta = 0.01,
-#                    soil_embedded_depth = 45,
+#                    embedded_len = 45,
 #                    spring_len = 10, tower_start=25,
 #                    scour_n_nodes = 0 # scour parameters
 #                    )
@@ -605,7 +566,7 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    water_switch=1,
 #                    fixtures_switch=1,
 #                    soil_model_switch = 2,
-#                    soil_embedded_depth = 45,
+#                    embedded_len = 45,
 #                    s_u=150e+3, eps_50=0.005, gamma=10e+3, J=0.5, # p-y soft clay Matlock
 #                    spring_len = 10, tower_start=25,
 #                    scour_n_nodes = 0 # scour parameters
@@ -619,19 +580,36 @@ def wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=200e+9, steel_dam
 #                    tower_len = 90, tower_top_r2 = 1.935, tower_top_r1 = 1.916, # tower parameters
 #                    tower_base_r2 = 3, tower_base_r1 = 2.973, tower_n_nodes = 10,
 #                    nac_mass = 0.001, nac_height = 0.001, nac_n_nodes = 1, # nacelle parameters
-#                    soil_model_switch = 0, soil_embedded_depth = 45, submerged_len=20
+#                    soil_model_switch = 0, embedded_len = 45, submerged_len=20
 #                    )
 
 
-# print("natural frequencies")
-# print(nat_freqs)
-# plt.plot(freqs,amp)
-# plt.show()
+print("natural frequencies")
+print(nat_freqs)
+plt.rcParams.update({'font.size': 15})
+plt.rc('legend',fontsize=10)
+plt.yscale('log')
+plt.plot(freqs,amp)
+plt.show()
 
 
-
-# population testing - small: YM, damping, density, big: soil properties
-for i in range(3):
+loads = [1,1e3,2e+6]
+# population testing
+for i in range(5):
+    # nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
+    #                mon_len = 75, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
+    #                mon_top_r1 = 2.973, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes=2,
+    #                tower_len = 90, tower_top_r2 = 1.935, tower_top_r1 = 1.916, # tower parameters
+    #                tower_base_r2 = 3, tower_base_r1 = 2.973, tower_n_nodes = 10,
+    #                nac_mass = 350e+3, nac_height = 4.8, nac_n_nodes = 1, # nacelle parameters
+    #                water_switch=1,
+    #                fixtures_switch=1,
+    #                soil_model_switch = 1, soil_k = np.random.uniform(10e+6,50e+6), soil_eta = 0.01,
+    #                embedded_len = np.random.uniform(40,45),
+    #                spring_len = 10, tower_start=25,
+    #                scour_n_nodes = 0 # scour parameters
+    #                )
+    
     nat_freqs, nodal_x_coord, mode_shapes_x, mode_shapes_y, mode_shapes_z, amp, freqs = wtg_foundation(steel_den=7850, steel_poisson=0.3, steel_YM=210e+9, steel_damping=0.01, # material parameters
                    mon_len = 75, mon_base_r2 = 3, mon_base_r1 = 2.973, mon_top_r2 = 3, # monopile parameters
                    mon_top_r1 = 2.973, mon_embedded_n_nodes=5, mon_submerged_n_nodes=3, mon_air_n_nodes=2,
@@ -640,38 +618,51 @@ for i in range(3):
                    nac_mass = 350e+3, nac_height = 4.8, nac_n_nodes = 1, # nacelle parameters
                    water_switch=1,
                    fixtures_switch=1,
-                   soil_model_switch = 1, soil_k = np.random.uniform(10e+6,50e+6), soil_eta = 0.01,
-                   soil_embedded_depth = np.random.uniform(40,45),
+                   soil_model_switch = 2,
+                   s_u=50e+3, gamma=8e+3,
+                   embedded_len = 45,
                    spring_len = 10, tower_start=25,
-                   scour_n_nodes = 0 # scour parameters
+                   scour_n_nodes = 0, # scour parameters
+                   wind_load=loads[i]
                    )
     print("natural frequencies")
     print(nat_freqs)
-    plt.plot(freqs, amp)
+    plt.rcParams.update({'font.size': 18})
+    plt.rc('legend',fontsize=12)
+    plt.plot(freqs, amp, label='pop_member '+str(i) + ' Load_Y: ' + str(loads[i]))
+    plt.title("Receptance FRF for first bending moment")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("|Receptance|")
+    plt.legend(loc="upper right")
 plt.show()
 
 
-# Mode shape plotting
-# Initialise the subplot function using number of rows and columns
-figure, axis = plt.subplots(3, sharex=True, sharey=True) # share x and y axes
-for k in range(10):
-    plt.subplot(311)
-    plt.plot(nodal_x_coord, mode_shapes_x[k,:], label="mode " + str(k+1))
-    plt.subplot(312)
-    plt.plot(nodal_x_coord, mode_shapes_y[k,:], label="mode " + str(k+1))
-    plt.subplot(313)
-    plt.plot(nodal_x_coord, mode_shapes_z[k,:], label="mode " + str(k+1))
+# # Mode shape plotting
+# # Initialise the subplot function using number of rows and columns
+# figure, axis = plt.subplots(3, sharex=True, sharey=True) # share x and y axes
+# for k in range(10):
+#     plt.subplot(311)
+#     plt.plot(nodal_x_coord, mode_shapes_x[k,:], label="mode " + str(k+1))
+#     plt.subplot(312)
+#     plt.plot(nodal_x_coord, mode_shapes_y[k,:], label="mode " + str(k+1))
+#     plt.subplot(313)
+#     plt.plot(nodal_x_coord, mode_shapes_z[k,:], label="mode " + str(k+1))
 
-plt.subplot(311)
-plt.title("mode shape UX")
-plt.legend()
-plt.subplot(312)
-plt.title("mode shape UY")
-plt.legend()
-plt.subplot(313)
-plt.title("mode shape UZ")
-plt.legend()
-plt.show()
+# plt.subplot(311)
+# plt.title("Mode shapes UX")
+# plt.ylabel("Displacement")
+# plt.legend(loc="upper right")
+# plt.subplot(312)
+# plt.title("Mode shapes UY")
+# plt.ylabel("Displacement")
+# plt.legend(loc="upper right")
+# plt.subplot(313)
+# plt.title("Mode shapes UZ")
+# plt.ylabel("Displacement")
+# plt.legend(loc="upper right")
+
+# plt.tight_layout()
+# plt.show()
 
 
 
