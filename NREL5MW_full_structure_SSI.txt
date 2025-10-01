@@ -1,0 +1,254 @@
+! Set preferences to structural
+!* 
+/NOPR   
+KEYW,PR_SET,1   
+KEYW,PR_STRUC,1 
+KEYW,PR_THERM,0 
+KEYW,PR_FLUID,0 
+KEYW,PR_ELMAG,0 
+KEYW,MAGNOD,0   
+KEYW,MAGEDG,0   
+KEYW,MAGHFE,0   
+KEYW,MAGELC,0   
+KEYW,PR_MULTI,0 
+/GO 
+!*  
+/PREP7  
+!*  
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+
+!! Typical steel properties
+! Young's Mod
+MPDATA,EX,1,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,1,,0.3  
+! density			 
+MPDATA,DENS,1,,7850 
+! material damping
+MPDATA,DMPR,1,,0.01 
+
+!! Submerged steel properties
+! Young's Mod
+MPDATA,EX,2,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,2,,0.3  
+! density			 
+MPDATA,DENS,2,,8880 
+! material damping
+MPDATA,DMPR,2,,0.01 
+
+!! steel + fixtures/fittings properties
+! Young's Mod
+MPDATA,EX,3,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,3,,0.3  
+! density			 
+MPDATA,DENS,3,,8500 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,3,,0.01 
+
+!! Create element types
+! Main structure
+ET,1,BEAM188
+! Springs
+ET,2,COMBIN14, 0,0,0				  
+
+! create keypoints for geometry  
+K,1,0,0,0,  
+K,2,45,0,0,
+K,3,65,0,0
+K,4,75,0,0
+K,5,162.6,0,0
+K,6,167.4,0,0
+
+! orientation keypoint
+K,7,0,20,0,
+	
+! connect the keypoints with lines (monopile, tower etc)
+LSTR,       1,       2
+LSTR,       2,       3  
+LSTR,       3,       4  
+LSTR,       4,       5
+LSTR,       5,       6   
+
+!! create cross-sections
+! monopile bottom
+SECTYPE,   1, BEAM, CTUBE, monopile, 0  
+SECOFFSET, CENT 
+SECDATA,2.9649,3,0,0,0,0,0,0,0,0,0,0  								 
+
+! monopile top
+SECTYPE,   2, BEAM, CTUBE, monopile, 0  
+SECOFFSET, CENT 
+SECDATA,2.9649,3,0,0,0,0,0,0,0,0,0,0  
+
+! tower bottom
+SECTYPE,   3, BEAM, CTUBE, tower, 0 
+SECOFFSET, CENT 
+SECDATA,2.9649,3,0,0,0,0,0,0,0,0,0,0  
+
+! tower top
+SECTYPE,   4, BEAM, CTUBE, tower, 0 
+SECOFFSET, CENT 
+SECDATA,1.9103,1.935,0,0,0,0,0,0,0,0,0,0  
+
+! monopile taper
+SECTYPE,5,TAPER, ,monopile_taper 
+SECDATA,   1,0,,, 
+SECDATA,   2,75,,, 	
+
+! tower taper
+SECTYPE,6,TAPER, ,tower_taper 
+SECDATA,   3,75,,, 
+SECDATA,   4,162.6,,, 	
+
+! nacelle
+SECTYPE,  7, BEAM, CSOLID, nacelle, 0  
+SECOFFSET, CENT 
+SECDATA,1.7195,0,0,0,0,0,0,0,0,0,0,0 
+
+!! Meshing monopile
+!embedded length			
+MAT, 1		
+LSEL, , , ,       1 
+LATT,1,1,1, ,       7, ,5 ! sets KP orientation and cross section   
+
+! Set number of nodes for line
+LESIZE,ALL,,,5, , , , ,1 
+!*  
+! Mesh it					
+LMESH,       1  		
+
+! submerged length
+MAT, 2
+LSEL, , , ,       2 
+LATT,1,1,1, ,       7, ,5 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL,, ,3, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       2  
+
+! remaining length
+MAT, 1
+LSEL, , , ,       3 
+LATT,1,1,1, ,       7, ,5 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL,, ,2, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       3  
+
+! tower
+MAT, 3
+LSEL, , , ,       4 
+LATT,1,1,1, ,       7, ,6 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL, , ,10, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       4  
+
+! nacelle
+MAT, 1
+LSEL, , , ,       5 
+LATT,1,1,1, ,       7, ,7 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL, , ,1, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       5  
+
+! Workaround for selecting different material types post meshing
+ESEL,,,,6,8
+MPCHG,2,ALL
+ESEL,,,,10,20
+MPCHG,3,ALL 
+ESEL,ALL
+
+! Turn on 3D plotting
+/SHRINK,0   
+/ESHAPE,1.0 
+/EFACET,1   
+/RATIO,1,1,1
+/CFORMAT,32,0   
+/REPLOT 
+
+! Set constant values
+R,1,90000000,0.01 ! stiffness and damping coefficients
+
+! nodes for spring ends
+! y-direction
+N,100,0,10,0
+N,101,9,10,0 
+N,102,18,10,0
+N,103,27,10,0 
+N,104,36,10,0
+!N,105,45,10,0
+
+! z-direction
+N,106,0,0,10
+N,107,9,0,10 
+N,108,18,0,10
+N,109,27,0,10 
+N,110,36,0,10
+!N,111,45,0,10
+
+! Change to correct element type
+type, 2
+
+! create spring elements
+! y-direction
+REAL, 1
+e,1,100
+!REAL, 2  
+e,3,101
+!REAL, 3
+e,4,102
+!REAL, 4 
+e,5,103
+!REAL, 5
+e,6,104
+!REAL, 6 
+!e,2,105
+
+! z-direction
+!REAL, 1
+e,1,106
+!REAL, 2  
+e,3,107
+!REAL, 3
+e,4,108
+!REAL, 4 
+e,5,109
+!REAL, 5
+e,6,110
+!REAL, 6 
+!e,2,111
+
+! set boundary condition for fixed spring ends 
+D,100,ALL,0,,111
+
+!! Pinned boundary condition
+! set boundary condition 
+DK, 1, UX,0
+
+FINISH ! finish model set up and going into solution mode
+/SOL
+
+!! Modal Analysis
+ANTYPE,2
+! modal analysis settings
+MODOPT,LANB,20,0,20, ,OFF   
+SOLVE
+FINISH   
+		

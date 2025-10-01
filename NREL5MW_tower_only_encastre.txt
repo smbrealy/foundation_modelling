@@ -1,0 +1,176 @@
+!! Default starting commands on opening an APDL session
+
+/NOPR   ! Suppress printing of UNDO process 
+/PMACRO ! Echo following commands to log    
+FINISH  ! Make sure we are at BEGIN level   
+/CLEAR,NOSTART  ! Clear model since no SAVE found   
+! WE SUGGEST YOU REMOVE THIS LINE AND THE FOLLOWING STARTUP LINES   
+/input,menust,tmp,''
+/GRA,POWER  
+/GST,ON 
+/PLO,INFO,3 
+/GRO,CURL,ON
+/CPLANE,1   
+/REPLOT,RESIZE  
+WPSTYLE,,,,,,,,0
+/REPLOT,RESIZE 
+
+! Set preferences to structural
+!*  
+/NOPR   
+KEYW,PR_SET,1   
+KEYW,PR_STRUC,1 
+KEYW,PR_THERM,0 
+KEYW,PR_FLUID,0 
+KEYW,PR_ELMAG,0 
+KEYW,MAGNOD,0   
+KEYW,MAGEDG,0   
+KEYW,MAGHFE,0   
+KEYW,MAGELC,0   
+KEYW,PR_MULTI,0 
+/GO 
+!*  
+!! Start point for pymapdl I think				
+!*  
+/PREP7  
+!*  
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+
+!! normal steel
+! Young's Mod
+MPDATA,EX,1,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,1,,0.3  
+! density			 
+MPDATA,DENS,1,,7850 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,1,,0.01 
+
+!! submerged steel
+! Young's Mod
+MPDATA,EX,2,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,2,,0.3  
+! density			 
+MPDATA,DENS,2,,8880 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,2,,0.01 
+
+!! steel + fixtures/fittings
+! Young's Mod
+MPDATA,EX,3,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,3,,0.3  
+! density			 
+MPDATA,DENS,3,,8500 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,3,,0.01 
+
+
+! Create element types
+ET,1,BEAM188
+ET,2,COMBIN14, 0,0,0
+  					  
+
+! create keypoints for geometry  
+K,1,0,0,0,  
+K,2,87.6,0,0,
+K,3,92.4,0,0
+
+! orientation keypoint
+K,4,0,20,0,
+	
+! connect the keypoints with lines (monopile, tower etc)
+LSTR,       1,       2
+LSTR,       2,       3  
+
+!! create cross-sections
+! tower bottom
+SECTYPE,   1, BEAM, CTUBE, tower, 0 
+SECOFFSET, CENT 
+SECDATA,2.9649,3,0,0,0,0,0,0,0,0,0,0  
+
+! tower top
+SECTYPE,   2, BEAM, CTUBE, tower, 0 
+SECOFFSET, CENT 
+SECDATA,1.9103,1.935,0,0,0,0,0,0,0,0,0,0  
+
+
+! tower taper
+SECTYPE,   3,TAPER, ,tower_taper 
+SECDATA,   1,0,,, 
+SECDATA,   2,87.6,,, 	
+
+! nacelle
+SECTYPE,  4, BEAM, CSOLID, nacelle, 0  
+SECOFFSET, CENT 
+SECDATA,1.7195,0,0,0,0,0,0,0,0,0,0,0 
+
+
+!! Meshing
+! tower
+MAT, 3
+LSEL, , , ,       1 
+LATT,1,1,1, ,       4, ,3 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL, , ,10, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       1  
+
+! nacelle
+MAT, 1
+LSEL, , , ,       2 
+LATT,1,1,1, ,       4, ,4 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL, , ,1, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       2  
+
+! Workaround for selecting different material types post meshing
+ESEL,,,,1,10
+MPCHG,3,ALL 
+ESEL,ALL
+
+! Turn on 3D plotting
+/SHRINK,0   
+/ESHAPE,1.0 
+/EFACET,1   
+/RATIO,1,1,1
+/CFORMAT,32,0   
+/REPLOT 
+
+! set boundary condition 
+DK, 1, ALL,0
+
+
+FINISH ! finish model set up and going into solution mode
+/SOL
+!! Harmonic Analysis											   
+!ANTYPE,3
+! analysis option if needed
+! load step options
+!HARFRQ,0,0.5, ! harmonic frequency start and end
+!NSUBST,500, ! number of substeps
+!KBC,0   ! ramped or stepped
+!*  
+
+! solve model
+!SOLVE
+!FINISH  
+! enters database results processor
+
+
+!! Modal Analysis
+ANTYPE,2
+! modal analysis settings
+MODOPT,LANB,20,0,20, ,OFF   
+SOLVE
+FINISH   
+		
