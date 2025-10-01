@@ -1,0 +1,442 @@
+!! Default starting commands on opening an APDL session
+
+/NOPR   ! Suppress printing of UNDO process 
+/PMACRO ! Echo following commands to log    
+FINISH  ! Make sure we are at BEGIN level   
+/CLEAR,NOSTART  ! Clear model since no SAVE found   
+! WE SUGGEST YOU REMOVE THIS LINE AND THE FOLLOWING STARTUP LINES   
+/input,menust,tmp,''
+/GRA,POWER  
+/GST,ON 
+/PLO,INFO,3 
+/GRO,CURL,ON
+/CPLANE,1   
+/REPLOT,RESIZE  
+WPSTYLE,,,,,,,,0
+/REPLOT,RESIZE 
+
+! Set preferences to structural
+!*  
+/NOPR   
+KEYW,PR_SET,1   
+KEYW,PR_STRUC,1 
+KEYW,PR_THERM,0 
+KEYW,PR_FLUID,0 
+KEYW,PR_ELMAG,0 
+KEYW,MAGNOD,0   
+KEYW,MAGEDG,0   
+KEYW,MAGHFE,0   
+KEYW,MAGELC,0   
+KEYW,PR_MULTI,0 
+/GO 
+!*  
+!! Start point for pymapdl I think				
+!*  
+/PREP7  
+!*  
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+
+!! tube material
+! Young's Mod
+MPDATA,EX,1,,140000000000 
+! Poissons Ratio	
+MPDATA,PRXY,1,,0.34  
+! density
+! 0.401kg = 8500
+! nominal = 8960			 
+MPDATA,DENS,1,,8500 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,1,,0.01 
+
+!! top mass
+! Young's Mod
+MPDATA,EX,2,,210000000000 
+! Poissons Ratio	
+MPDATA,PRXY,2,,0.3  
+! density			
+! 1.28kg = 8045
+! nominal = 7850 
+MPDATA,DENS,2,,8045 
+! material damping - note there is an alternative way to do this (Rayleigh damping), which is frequency dependent
+MPDATA,DMPR,2,,0.01 
+
+
+! Create element types
+ET,1,BEAM188
+ET,2,COMBIN14, 0,0,0
+!ET,3,COMBIN39,0,1,0,1,0    					  
+
+! create keypoints for geometry  
+K,1,0,0,0  
+K,2,0.3,0,0
+K,3,1.5,0,0
+K,4,1.5785,0,0
+
+! orientation keypoint
+K,5,0,0.5,0,
+
+! connect the keypoints with lines
+LSTR,       1,       2
+LSTR,       2,       3
+LSTR,       3,       4
+
+!! create cross-sections
+SECTYPE,   1, BEAM, CTUBE, monopile, 0  
+SECOFFSET, CENT 
+SECDATA,0.0068,0.0075,0,0,0,0,0,0,0,0,0,0  	
+
+! top mass
+SECTYPE,  2, BEAM, CSOLID, topmass, 0  
+SECOFFSET, CENT 
+SECDATA,0.0254,0,0,0,0,0,0,0,0,0,0,0 
+
+
+!! Meshing monopile
+!embedded length			
+MAT, 1		
+LSEL, , , ,       1 
+LATT,1,1,1, ,       5, ,1 ! sets KP orientation and cross section   
+
+! Set number of nodes for line
+LESIZE,ALL,,,60, , , , ,1 
+!*  
+! Mesh it					
+LMESH,       1  	
+
+!! Meshing monopile
+!embedded length			
+MAT, 1		
+LSEL, , , ,       2 
+LATT,1,1,1, ,       5, ,1 ! sets KP orientation and cross section   
+
+! Set number of nodes for line
+LESIZE,ALL,,,10, , , , ,1 
+!*  
+! Mesh it					
+LMESH,       2  	
+
+
+
+! top mass
+MAT, 1
+LSEL, , , ,       3 
+LATT,1,1,1, ,       5, ,2 ! sets KP orientation and cross section       
+
+! Set number of nodes for line
+LESIZE,ALL, , ,1, , , , ,1 
+
+!*  
+! Mesh it					
+LMESH,       3  
+
+
+
+! Workaround for selecting different material types post meshing
+ESEL,,,,71,71
+MPCHG,2,ALL
+ESEL,ALL
+
+
+
+! Turn on 3D plotting
+/SHRINK,0   
+/ESHAPE,1.0 
+/EFACET,1   
+/RATIO,1,1,1
+/CFORMAT,32,0   
+/REPLOT 
+
+! Boundary conditions
+
+! for cantilever
+!DK, 1, ALL,0
+
+! for springs
+DK, 1, UX,0
+
+
+! Set spring constant
+
+! good baseline
+R,1,2850,0.01 ! stiffness and damping coefficients															
+
+! nodes for spring ends
+! y-direction
+N,200,0,0.1,0
+N,201,0.005,0.1,0
+N,202,0.01,0.1,0
+N,203,0.015,0.1,0
+N,204,0.02,0.1,0
+N,205,0.025,0.1,0
+N,206,0.03,0.1,0
+N,207,0.035,0.1,0
+N,208,0.04,0.1,0
+N,209,0.045,0.1,0
+N,210,0.05,0.1,0
+N,211,0.055,0.1,0
+N,212,0.06,0.1,0
+N,213,0.065,0.1,0
+N,214,0.07,0.1,0
+N,215,0.075,0.1,0
+N,216,0.08,0.1,0
+N,217,0.085,0.1,0
+N,218,0.09,0.1,0
+N,219,0.095,0.1,0
+N,220,0.1,0.1,0
+N,221,0.105,0.1,0
+N,222,0.11,0.1,0
+N,223,0.115,0.1,0
+N,224,0.12,0.1,0
+N,225,0.125,0.1,0
+N,226,0.13,0.1,0
+N,227,0.135,0.1,0
+N,228,0.14,0.1,0
+N,229,0.145,0.1,0
+N,230,0.15,0.1,0
+N,231,0.155,0.1,0
+N,232,0.16,0.1,0
+N,233,0.165,0.1,0
+N,234,0.17,0.1,0
+N,235,0.175,0.1,0
+N,236,0.18,0.1,0
+N,237,0.185,0.1,0
+N,238,0.19,0.1,0
+N,239,0.195,0.1,0
+N,240,0.2,0.1,0
+N,241,0.205,0.1,0
+N,242,0.21,0.1,0
+N,243,0.215,0.1,0
+N,244,0.22,0.1,0
+N,245,0.225,0.1,0
+N,246,0.23,0.1,0
+N,247,0.235,0.1,0
+N,248,0.24,0.1,0
+N,249,0.245,0.1,0
+N,250,0.25,0.1,0
+N,251,0.255,0.1,0
+N,252,0.26,0.1,0
+N,253,0.265,0.1,0
+N,254,0.27,0.1,0
+N,255,0.275,0.1,0
+N,256,0.28,0.1,0
+N,257,0.285,0.1,0
+N,258,0.29,0.1,0
+N,259,0.295,0.1,0
+N,260,0.3,0.1,0
+
+
+! z-direction
+N,261,0,0,0.1
+N,262,0.005,0,0.1
+N,263,0.01,0,0.1
+N,264,0.015,0,0.1
+N,265,0.02,0,0.1
+N,266,0.025,0,0.1
+N,267,0.03,0,0.1
+N,268,0.035,0,0.1
+N,269,0.04,0,0.1
+N,270,0.045,0,0.1
+N,271,0.05,0,0.1
+N,272,0.055,0,0.1
+N,273,0.06,0,0.1
+N,274,0.065,0,0.1
+N,275,0.07,0,0.1
+N,276,0.075,0,0.1
+N,277,0.08,0,0.1
+N,278,0.085,0,0.1
+N,279,0.09,0,0.1
+N,280,0.095,0,0.1
+N,281,0.1,0,0.1
+N,282,0.105,0,0.1
+N,283,0.11,0,0.1
+N,284,0.115,0,0.1
+N,285,0.12,0,0.1
+N,286,0.125,0,0.1
+N,287,0.13,0,0.1
+N,288,0.135,0,0.1
+N,289,0.14,0,0.1
+N,290,0.145,0,0.1
+N,291,0.15,0,0.1
+N,292,0.155,0,0.1
+N,293,0.16,0,0.1
+N,294,0.165,0,0.1
+N,295,0.17,0,0.1
+N,296,0.175,0,0.1
+N,297,0.18,0,0.1
+N,298,0.185,0,0.1
+N,299,0.19,0,0.1
+N,300,0.195,0,0.1
+N,301,0.2,0,0.1
+N,302,0.205,0,0.1
+N,303,0.21,0,0.1
+N,304,0.215,0,0.1
+N,305,0.22,0,0.1
+N,306,0.225,0,0.1
+N,307,0.23,0,0.1
+N,308,0.235,0,0.1
+N,309,0.24,0,0.1
+N,310,0.245,0,0.1
+N,311,0.25,0,0.1
+N,312,0.255,0,0.1
+N,313,0.26,0,0.1
+N,314,0.265,0,0.1
+N,315,0.27,0,0.1
+N,316,0.275,0,0.1
+N,317,0.28,0,0.1
+N,318,0.285,0,0.1
+N,319,0.29,0,0.1
+N,320,0.295,0,0.1
+N,321,0.3,0,0.1
+
+
+! Change to correct element type
+type, 2
+
+! create spring elements
+! y-direction
+REAL, 1
+!e,1,200
+e,3,201
+e,4,202
+e,5,203
+e,6,204
+e,7,205
+e,8,206
+e,9,207
+e,10,208
+e,11,209
+e,12,210
+e,13,211
+e,14,212
+e,15,213
+e,16,214
+e,17,215
+e,18,216
+e,19,217
+e,20,218
+e,21,219
+e,22,220
+e,23,221
+e,24,222
+e,25,223
+e,26,224
+e,27,225
+e,28,226
+e,29,227
+e,30,228
+e,31,229
+e,32,230
+e,33,231
+e,34,232
+e,35,233
+e,36,234
+e,37,235
+e,38,236
+e,39,237
+e,40,238
+e,41,239
+e,42,240
+e,43,241
+e,44,242
+e,45,243
+e,46,244
+e,47,245
+e,48,246
+e,49,247
+e,50,248
+e,51,249
+e,52,250
+e,53,251
+e,54,252
+e,55,253
+e,56,254
+e,57,255
+e,58,256
+e,59,257
+e,60,258
+e,61,259
+e,2,260
+
+
+! z-direction
+!e,1,261
+e,3,262
+e,4,263
+e,5,264
+e,6,265
+e,7,266
+e,8,267
+e,9,268
+e,10,269
+e,11,270
+e,12,271
+e,13,272
+e,14,273
+e,15,274
+e,16,275
+e,17,276
+e,18,277
+e,19,278
+e,20,279
+e,21,280
+e,22,281
+e,23,282
+e,24,283
+e,25,284
+e,26,285
+e,27,286
+e,28,287
+e,29,288
+e,30,289
+e,31,290
+e,32,291
+e,33,292
+e,34,293
+e,35,294
+e,36,295
+e,37,296
+e,38,297
+e,39,298
+e,40,299
+e,41,300
+e,42,301
+e,43,302
+e,44,303
+e,45,304
+e,46,305
+e,47,306
+e,48,307
+e,49,308
+e,50,309
+e,51,310
+e,52,311
+e,53,312
+e,54,313
+e,55,314
+e,56,315
+e,57,316
+e,58,317
+e,59,318
+e,60,319
+e,61,320
+e,2,321
+
+
+! set boundary condition for fixed spring ends 
+D,200,ALL,0,,400
+
+! apply loading
+FK, 4, FY, -50
+
+FINISH ! finish model set up and going into solution mode
+/SOL
+
+!! Modal Analysis
+ANTYPE,2
+! modal analysis settings
+MODOPT,LANB,20,0,20, ,OFF   
+SOLVE
+FINISH   
+		
+
